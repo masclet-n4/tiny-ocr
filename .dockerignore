@@ -1,0 +1,10 @@
+.git
+.env
+__pycache__
+*.pyc
+venv
+results
+docs
+pdfs
+pocketbase
+compose.yml

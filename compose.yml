@@ -1,0 +1,32 @@
+services:
+  ocr:
+    build: .
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PB_URL: "${PB_URL:-http://host.docker.internal:8090}"
+      OCR_RENDER_SCALE: "${OCR_RENDER_SCALE:-1.5}"
+      OCR_MEMORY_TRIM: "${OCR_MEMORY_TRIM:-1}"
+      TESSERACT_LANG: "${TESSERACT_LANG:-spa+eng}"
+      TESSERACT_PSM: "${TESSERACT_PSM:-3}"
+      OCR_ISOLATE_PROCESS: "${OCR_ISOLATE_PROCESS:-1}"
+      RUSTFS_ENDPOINT: "${RUSTFS_ENDPOINT:-http://host.docker.internal:9000}"
+      RUSTFS_BUCKET: "${RUSTFS_BUCKET:-ocr-results}"
+      RUSTFS_ACCESS_KEY: "${RUSTFS_ACCESS_KEY}"
+      RUSTFS_SECRET_KEY: "${RUSTFS_SECRET_KEY}"
+      RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
+    ports:
+      - "${OCR_PORT:-3000}:3000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:3000/alive', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true

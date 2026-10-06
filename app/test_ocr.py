@@ -1,6 +1,7 @@
 import unittest
+from unittest.mock import Mock, patch
 
-from app.ocr import _parse_tsv
+from app.ocr import _parse_tsv, extract_pdf_page
 
 
 class ParseTesseractTsvTests(unittest.TestCase):
@@ -14,6 +15,25 @@ class ParseTesseractTsvTests(unittest.TestCase):
         )
 
         self.assertEqual(_parse_tsv(tsv), (["Hola mundo", "Adios"], [0.9, 0.6]))
+
+
+class ExtractPdfPageTests(unittest.TestCase):
+    def test_prefers_text_layer_and_closes_rendered_image_after_ocr(self):
+        page = Mock()
+        with patch("app.ocr.page_text_layer", return_value="embedded text"), patch(
+            "app.ocr.ocr_page"
+        ) as ocr_page:
+            self.assertEqual(extract_pdf_page(page), (["embedded text"], [1.0], True))
+            page.render.assert_not_called()
+            ocr_page.assert_not_called()
+
+        image = Mock()
+        page.render.return_value.to_pil.return_value = image
+        with patch("app.ocr.page_text_layer", return_value=None), patch(
+            "app.ocr.ocr_page", return_value=(["scanned text"], [0.8])
+        ):
+            self.assertEqual(extract_pdf_page(page), (["scanned text"], [0.8], False))
+        image.close.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 
 import pypdfium2 as pdfium
 
-from app.config import MEMORY_TRIM, RENDER_SCALE
+from app.config import MEMORY_TRIM
 from app.file_storage import save_text
 from app.memory import release_page_memory
-from app.ocr import ocr_lock, ocr_page, page_text_layer
+from app.ocr import extract_pdf_page, ocr_lock
 from app.storage import get_pb
 
 logger = logging.getLogger("ocr")
@@ -51,22 +51,14 @@ def run_ocr_job(job_id: str, tmp_path: str, filename: str, size: int):
         texts, scores, pages_processed, pages_text_layer = [], [], 0, 0
         with ocr_lock:
             for i, page in enumerate(doc, 1):
-                layer_text = page_text_layer(page)
-                if layer_text is not None:
-                    texts.append(layer_text)
-                    scores.append(1.0)
+                page_texts, page_scores, has_text_layer = extract_pdf_page(page)
+                texts.extend(page_texts)
+                scores.extend(page_scores)
+                if has_text_layer:
                     pages_text_layer += 1
-                else:
-                    image = page.render(scale=RENDER_SCALE).to_pil()
-                    try:
-                        t, s = ocr_page(image)
-                        texts.extend(t)
-                        scores.extend(s)
-                    finally:
-                        image.close()
                 pages_processed = i
                 del page
-                if MEMORY_TRIM and layer_text is None:
+                if MEMORY_TRIM and not has_text_layer:
                     release_page_memory()
                 elif i % 10 == 0:
                     gc.collect()

@@ -8,7 +8,13 @@ import subprocess
 import tempfile
 import threading
 
-from app.config import MEMORY_TRIM, RENDER_SCALE, TESSERACT_CMD, TESSERACT_LANG, TESSERACT_PSM
+from app.config import (
+    MEMORY_TRIM,
+    RENDER_SCALE,
+    TESSERACT_CMD,
+    TESSERACT_LANG,
+    TESSERACT_PSM,
+)
 from app.memory import release_page_memory
 
 ocr_lock = threading.Lock()
@@ -87,6 +93,20 @@ def page_text_layer(page):
     return text if len(text.strip()) >= TEXT_LAYER_MIN_CHARS else None
 
 
+def extract_pdf_page(page) -> tuple[list[str], list[float], bool]:
+    """Return page text, confidence scores and whether text was embedded."""
+    text = page_text_layer(page)
+    if text is not None:
+        return [text], [1.0], True
+
+    image = page.render(scale=RENDER_SCALE).to_pil()
+    try:
+        texts, scores = ocr_page(image)
+        return texts, scores, False
+    finally:
+        image.close()
+
+
 def ocr_file(path, suffix):
     """OCR a PDF or image, preferring existing PDF text."""
     if suffix.lower() == ".pdf":
@@ -97,21 +117,14 @@ def ocr_file(path, suffix):
         try:
             with ocr_lock:
                 for page in doc:
-                    layer_text = page_text_layer(page)
-                    if layer_text is not None:
-                        texts.append(layer_text)
-                        continue
-                    image = page.render(scale=RENDER_SCALE).to_pil()
-                    try:
-                        page_texts, _ = ocr_page(image)
-                        texts.extend(page_texts)
-                    finally:
-                        image.close()
-                    del page, image
-                    if MEMORY_TRIM:
-                        release_page_memory()
-                    elif len(texts) % 100 == 0:
-                        gc.collect()
+                    page_texts, _, has_text_layer = extract_pdf_page(page)
+                    texts.extend(page_texts)
+                    if not has_text_layer:
+                        if MEMORY_TRIM:
+                            release_page_memory()
+                        elif len(texts) % 100 == 0:
+                            gc.collect()
+                    del page
         finally:
             doc.close()
         return texts
